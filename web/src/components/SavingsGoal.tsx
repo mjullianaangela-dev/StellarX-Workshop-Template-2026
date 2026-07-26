@@ -32,7 +32,7 @@ export default function SavingsGoal({ publicKey }: { publicKey: string | null })
   }, [configured]);
 
   useEffect(() => {
-    refresh();
+    void Promise.resolve().then(refresh);
   }, [refresh]);
 
   const contribute = async () => {

@@ -1,21 +1,13 @@
 'use client';
-import { useState, useCallback } from 'react';
 
-const TIMEOUT_MS = 3000;
-
-// Freighter API calls can hang if the extension is missing — race them with a timeout.
-function withTimeout<T>(p: Promise<T>, fallback: T, ms = TIMEOUT_MS): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
-  ]);
-}
+import { useCallback, useState } from 'react';
+import { NETWORK_PASSPHRASE } from '@/lib/stellar';
 
 export interface WalletState {
   publicKey: string | null;
   connecting: boolean;
   error: string | null;
-  connect: () => void;
+  connect: () => Promise<void>;
   disconnect: () => void;
 }
 
@@ -28,28 +20,24 @@ export function useWallet(): WalletState {
     setConnecting(true);
     setError(null);
     try {
-      // Dynamic import only — a static import breaks SSR (browser globals).
+      if (typeof window === 'undefined') throw new Error('Wallet connection is only available in a browser.');
+      // Dynamic import keeps the Freighter browser bridge out of server rendering.
       const freighter = await import('@stellar/freighter-api');
 
-      const connected = await withTimeout(freighter.isConnected(), {
-        isConnected: false,
-      });
-      if (!connected.isConnected) {
-        throw new Error(
-          'Freighter not detected. Install it from freighter.app and reload.',
-        );
-      }
-
-      // requestAccess() prompts the user and returns their address (Freighter v6).
+      // Do not gate this behind isConnected(): some Freighter versions only expose
+      // themselves after the access request. requestAccess is the canonical prompt.
       const access = await freighter.requestAccess();
-      if (access.error) throw new Error(access.error);
-      if (!access.address) {
-        throw new Error('No address returned — did you approve the request?');
-      }
+      if (access.error) throw new Error(formatFreighterError(access.error));
+      if (!access.address) throw new Error('Freighter returned no account. Unlock it, choose an account, and try again.');
 
+      const network = await freighter.getNetwork();
+      if (network.error) throw new Error(formatFreighterError(network.error));
+      if (network.networkPassphrase !== NETWORK_PASSPHRASE) {
+        throw new Error('Switch Freighter to Testnet, then reconnect. This prototype does not use Mainnet.');
+      }
       setPublicKey(access.address);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to connect wallet');
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : 'Failed to connect wallet');
     } finally {
       setConnecting(false);
     }
@@ -61,4 +49,13 @@ export function useWallet(): WalletState {
   }, []);
 
   return { publicKey, connecting, error, connect, disconnect };
+}
+
+function formatFreighterError(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  return 'Freighter did not respond. Confirm it is installed, unlocked, and allowed for this site, then reload.';
 }

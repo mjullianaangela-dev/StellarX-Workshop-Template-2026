@@ -14,7 +14,7 @@ export default function BalanceCard({
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    queueMicrotask(() => setLoading(true));
     fetchBalances(publicKey)
       .then((b) => active && setBalances(b))
       .catch(() => active && setBalances(null))
