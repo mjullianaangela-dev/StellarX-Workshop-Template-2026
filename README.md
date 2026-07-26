@@ -27,7 +27,9 @@ GITHUB REPOSITORY
 NETWORK & DEPLOYMENT
 
 Network: testnet
+
 Live app URL: runs locally — see README
+
 Contract IDs / asset issuers: N/A — add the Testnet contract ID after deployment
 
 TEAM
